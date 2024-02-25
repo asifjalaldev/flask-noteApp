@@ -1,22 +1,39 @@
 
-from flask import Blueprint, render_template, request, flash
-
+from flask import Blueprint, render_template, request, flash, redirect, url_for
+from .models import User
+from . import db
+from werkzeug.security import generate_password_hash, check_password_hash
 # it has urls  so we set blueprint
-
+from flask_login import login_user, login_required, logout_user, current_user
 auth = Blueprint('auth',__name__)
 
 
 @auth.route('/login',methods=['GET', 'POST'])
 def login():
     if request.method=='POST':
-        data=request.form.get('email')
-        print(f'data is here: {data}')
+        email=request.form.get('email')
+        password=request.form.get('password')
+
+        user=User.query.filter_by(email=email).first()
+        if user:
+            if check_password_hash(user.password, password):
+                flash('Logged in successfully! ', category='success')
+                login_user(user, remember=True)
+                return redirect(url_for('views.home'))
+            else:
+                flash('Incorrect password! try again', category='error')
+        else:
+            flash(f'User not exist for email {email}', category='error')
+
+
     return render_template('login.html')
 
 
 @auth.route('/logout')
+@login_required
 def logout():
-    return '<p>logout up</p>'
+    logout_user()
+    return redirect(url_for('auth.login'))
 
 
 
@@ -27,6 +44,10 @@ def sign_up():
         firstName=request.form.get('firstName')
         password1=request.form.get('password1')
         password2=request.form.get('password2')
+        user=User.query.filter_by(email=email).first()
+        if user:
+            flash(f'Email {email} already exist', category='error')
+            return redirect(url_for('auth.sign_up'))
         if len(email) < 4:
             flash('email must be greater than 4 character', category='error')
         elif len(password1) != len(password2):
@@ -35,7 +56,11 @@ def sign_up():
         elif len(password1) < 7:
             flash('password must be greater than 7 character', category='error')
         else:
+            user= User(email=email, first_name=firstName, password= generate_password_hash( password1, method='pbkdf2:sha256:600000'))
+            db.session.add(user)
+            db.session.commit()
+            login_user(user, remember=True)          
             flash('Account Created', category='success')
+            return redirect(url_for('views.home'))
 
-
-    return render_template('sign-up.html')
+    return render_template('sign-up.html', user=current_user)
